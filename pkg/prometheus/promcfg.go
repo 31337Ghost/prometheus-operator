@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/blang/semver/v4"
 	"github.com/go-kit/log"
@@ -334,6 +335,7 @@ func (cg *ConfigGenerator) GenerateConfig(
 					p.Spec.EnforcedLabelNameLengthLimit,
 					p.Spec.EnforcedLabelValueLengthLimit,
 					shards,
+					scrapeInterval,
 				),
 			)
 		}
@@ -356,6 +358,7 @@ func (cg *ConfigGenerator) GenerateConfig(
 					p.Spec.EnforcedLabelNameLengthLimit,
 					p.Spec.EnforcedLabelValueLengthLimit,
 					shards,
+					scrapeInterval,
 				),
 			)
 		}
@@ -510,6 +513,7 @@ func (cg *ConfigGenerator) generatePodMonitorConfig(
 	enforcedLabelNameLengthLimit *uint64,
 	enforcedLabelValueLengthLimit *uint64,
 	shards int32,
+	globalScrapeInterval string,
 ) yaml.MapSlice {
 	hl := honorLabels(ep.HonorLabels, ignoreHonorLabels)
 	cfg := yaml.MapSlice{
@@ -529,11 +533,24 @@ func (cg *ConfigGenerator) generatePodMonitorConfig(
 	selectedNamespaces := getNamespacesFromNamespaceSelector(&m.Spec.NamespaceSelector, m.Namespace, ignoreNamespaceSelectors)
 	cfg = append(cfg, cg.generateK8SSDConfig(version, selectedNamespaces, apiserverConfig, store, kubernetesSDRolePod))
 
+	globalScrapeIntervalDuration, _ := time.ParseDuration(globalScrapeInterval)
+
 	if ep.Interval != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "scrape_interval", Value: ep.Interval})
 	}
 	if ep.ScrapeTimeout != "" {
-		cfg = append(cfg, yaml.MapItem{Key: "scrape_timeout", Value: ep.ScrapeTimeout})
+		scrapeTimeout := ep.ScrapeTimeout
+		// Prevent setting Scrape Timeout greater than Scrape Interval.
+		podMonitorScrapeTimeoutDuration, _ := time.ParseDuration(scrapeTimeout)
+		if ep.Interval != "" {
+			podMonitorScrapeInterval, _ := time.ParseDuration(ep.Interval)
+			if podMonitorScrapeTimeoutDuration.Seconds() > podMonitorScrapeInterval.Seconds() {
+				scrapeTimeout = ep.Interval
+			}
+		} else if podMonitorScrapeTimeoutDuration.Seconds() > globalScrapeIntervalDuration.Seconds() {
+			scrapeTimeout = globalScrapeInterval
+		}
+		cfg = append(cfg, yaml.MapItem{Key: "scrape_timeout", Value: scrapeTimeout})
 	}
 	if ep.Path != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "metrics_path", Value: ep.Path})
@@ -786,7 +803,8 @@ func (cg *ConfigGenerator) generateProbeConfig(
 	enforcedTargetLimit *uint64,
 	enforcedLabelLimit *uint64,
 	enforcedLabelNameLengthLimit *uint64,
-	enforcedLabelValueLengthLimit *uint64) yaml.MapSlice {
+	enforcedLabelValueLengthLimit *uint64,
+	globalScrapeInterval string) yaml.MapSlice {
 
 	jobName := fmt.Sprintf("probe/%s/%s", m.Namespace, m.Name)
 	cfg := yaml.MapSlice{
@@ -805,11 +823,24 @@ func (cg *ConfigGenerator) generateProbeConfig(
 	}
 	cfg = append(cfg, yaml.MapItem{Key: "metrics_path", Value: path})
 
+	globalScrapeIntervalDuration, _ := time.ParseDuration(globalScrapeInterval)
+
 	if m.Spec.Interval != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "scrape_interval", Value: m.Spec.Interval})
 	}
 	if m.Spec.ScrapeTimeout != "" {
-		cfg = append(cfg, yaml.MapItem{Key: "scrape_timeout", Value: m.Spec.ScrapeTimeout})
+		scrapeTimeout := m.Spec.ScrapeTimeout
+		// Prevent setting Scrape Timeout greater than Scrape Interval.
+		probeScrapeTimeoutDuration, _ := time.ParseDuration(scrapeTimeout)
+		if m.Spec.Interval != "" {
+			podMonitorScrapeInterval, _ := time.ParseDuration(m.Spec.Interval)
+			if probeScrapeTimeoutDuration.Seconds() > podMonitorScrapeInterval.Seconds() {
+				scrapeTimeout = m.Spec.Interval
+			}
+		} else if probeScrapeTimeoutDuration.Seconds() > globalScrapeIntervalDuration.Seconds() {
+			scrapeTimeout = globalScrapeInterval
+		}
+		cfg = append(cfg, yaml.MapItem{Key: "scrape_timeout", Value: scrapeTimeout})
 	}
 	if m.Spec.ProberSpec.Scheme != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "scheme", Value: m.Spec.ProberSpec.Scheme})
@@ -1067,6 +1098,7 @@ func (cg *ConfigGenerator) generateServiceMonitorConfig(
 	enforcedLabelNameLengthLimit *uint64,
 	enforcedLabelValueLengthLimit *uint64,
 	shards int32,
+	globalScrapeInterval string,
 ) yaml.MapSlice {
 	hl := honorLabels(ep.HonorLabels, overrideHonorLabels)
 	cfg := yaml.MapSlice{
@@ -1086,11 +1118,24 @@ func (cg *ConfigGenerator) generateServiceMonitorConfig(
 	selectedNamespaces := getNamespacesFromNamespaceSelector(&m.Spec.NamespaceSelector, m.Namespace, ignoreNamespaceSelectors)
 	cfg = append(cfg, cg.generateK8SSDConfig(version, selectedNamespaces, apiserverConfig, store, kubernetesSDRoleEndpoint))
 
+	globalScrapeIntervalDuration, _ := time.ParseDuration(globalScrapeInterval)
+
 	if ep.Interval != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "scrape_interval", Value: ep.Interval})
 	}
 	if ep.ScrapeTimeout != "" {
-		cfg = append(cfg, yaml.MapItem{Key: "scrape_timeout", Value: ep.ScrapeTimeout})
+		scrapeTimeout := ep.ScrapeTimeout
+		// Prevent setting Scrape Timeout greater than Scrape Interval.
+		serviceMonitorScrapeTimeoutDuration, _ := time.ParseDuration(scrapeTimeout)
+		if ep.Interval != "" {
+			serviceMonitorScrapeInterval, _ := time.ParseDuration(ep.Interval)
+			if serviceMonitorScrapeTimeoutDuration.Seconds() > serviceMonitorScrapeInterval.Seconds() {
+				scrapeTimeout = ep.Interval
+			}
+		} else if serviceMonitorScrapeTimeoutDuration.Seconds() > globalScrapeIntervalDuration.Seconds() {
+			scrapeTimeout = globalScrapeInterval
+		}
+		cfg = append(cfg, yaml.MapItem{Key: "scrape_timeout", Value: scrapeTimeout})
 	}
 	if ep.Path != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "metrics_path", Value: ep.Path})
