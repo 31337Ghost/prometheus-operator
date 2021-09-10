@@ -586,7 +586,7 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *operator.Config, shard in
 		})
 	}
 
-	const localProbe = `if [ -x "$(command -v curl)" ]; then exec curl %s; elif [ -x "$(command -v wget)" ]; then exec wget -q -O /dev/null %s; else exit 1; fi`
+	const localProbe = `if [ -x "$(command -v curl)" ]; then exec curl --connect-timeout %d %s; elif [ -x "$(command -v wget)" ]; then exec wget -T %d -q -O /dev/null %s; else exit 1; fi`
 
 	var readinessProbeHandler v1.Handler
 	{
@@ -597,7 +597,7 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *operator.Config, shard in
 				Command: []string{
 					"sh",
 					"-c",
-					fmt.Sprintf(localProbe, localReadyPath, localReadyPath),
+					fmt.Sprintf(localProbe, probeTimeoutSeconds, localReadyPath, probeTimeoutSeconds, localReadyPath),
 				},
 			}
 		} else {

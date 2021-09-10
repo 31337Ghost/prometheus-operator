@@ -414,7 +414,7 @@ func TestListenLocal(t *testing.T) {
 				Command: []string{
 					`sh`,
 					`-c`,
-					`if [ -x "$(command -v curl)" ]; then exec curl http://localhost:9090/-/ready; elif [ -x "$(command -v wget)" ]; then exec wget -q -O /dev/null http://localhost:9090/-/ready; else exit 1; fi`,
+					`if [ -x "$(command -v curl)" ]; then exec curl --connect-timeout 3 http://localhost:9090/-/ready; elif [ -x "$(command -v wget)" ]; then exec wget -T 3 -q -O /dev/null http://localhost:9090/-/ready; else exit 1; fi`,
 				},
 			},
 		},
